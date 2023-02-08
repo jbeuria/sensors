@@ -1,5 +1,6 @@
 from time import time,sleep
 from brainflow.board_shim import BoardShim, BrainFlowInputParams, BoardIds, BrainFlowPresets
+import mne
 
 class muse:
     def __init__(self,address,path="",boardId=BoardIds.MUSE_S_BOARD):
@@ -11,7 +12,8 @@ class muse:
         self.board = BoardShim(boardId, params)
         self.brainflow_id = boardId
         self.board.prepare_session()
-
+        self.raw_data=[]
+        
         if(boardId==BoardIds.MUSE_S_BOARD):
             print("adding ppg channel as well")
             self.board.config_board("p61")
@@ -57,6 +59,26 @@ class muse:
             return None
 
 
+    def export_mne(self):
+
+        eeg_channels = self.getChannels('eeg')
+
+        eeg_data = self.raw_data[eeg_channels, :]
+        eeg_data = eeg_data / 1000000  # BrainFlow returns uV, convert to V for MNE
+
+        # Creating MNE objects from brainflow data arrays
+        ch_types = ['eeg'] * len(eeg_channels)
+        ch_names =  self.getChannelNames('eeg')
+        sfreq = BoardShim.get_sampling_rate(self.brainflow_id,0) # 0 for default preset i.e. EEG 
+        info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
+        raw = mne.io.RawArray(eeg_data, info)
+
+        return raw
+    
+        # its time to plot something!
+        #raw.plot_psd(average=True)
+        #plt.savefig('psd.png')
+
     def stop(self):
         data1 = self.board.get_board_data(preset=BrainFlowPresets.DEFAULT_PRESET)
         data2=self.board.get_board_data(preset=BrainFlowPresets.AUXILIARY_PRESET)
@@ -64,7 +86,8 @@ class muse:
 
         self.board.stop_stream()
         self.board.release_session()
-        return [data1.T,data2.T,data3.T]
+        self.raw_data=[data1.T,data2.T,data3.T]
+        return self.raw_data
 
     def insertMarker(self,value,preset=BrainFlowPresets.DEFAULT_PRESET):
         self.board.insert_marker(value,preset)
